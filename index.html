@@ -297,6 +297,15 @@
         let todosAnuncios = [];
         let currentIndex = 0;
 
+        function isSafeUrl(url) {
+            try {
+                const parsed = new URL(String(url || '').trim(), window.location.href);
+                return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+            } catch {
+                return false;
+            }
+        }
+
         function buildAbsoluteURL(rawPath) {
             if (!rawPath) return '';
             if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
@@ -349,11 +358,16 @@
 
             if (!ad || !imgEl || !linkEl) return;
 
+            const safeHref = isSafeUrl(ad.LinkDestino) ? ad.LinkDestino : '#';
+            const safeImgSrc = buildAbsoluteURL(ad.ImagemBanner);
+
             imgEl.style.opacity = '0';
             setTimeout(() => {
-                linkEl.href = ad.LinkDestino || '#';
+                linkEl.href = safeHref;
                 linkEl.title = ad.AltText || 'Publicidade';
-                imgEl.src = buildAbsoluteURL(ad.ImagemBanner);
+                if (isSafeUrl(safeImgSrc)) {
+                    imgEl.src = safeImgSrc;
+                }
                 imgEl.alt = ad.AltText || 'Publicidade';
                 imgEl.style.opacity = '1';
             }, 150);
@@ -463,6 +477,15 @@
         let pessoas = JSON.parse(localStorage.getItem('rachar_pessoas')) || [];
         let itens = JSON.parse(localStorage.getItem('rachar_itens')) || [];
 
+        function escapeHTML(str) {
+            return String(str ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function salvarDados() {
             localStorage.setItem('rachar_pessoas', JSON.stringify(pessoas));
             localStorage.setItem('rachar_itens', JSON.stringify(itens));
@@ -530,10 +553,11 @@
                 return;
             }
             pessoas.forEach(p => {
+                const nomeSeguro = escapeHTML(p);
                 div.innerHTML += `
                     <label class="inline-flex items-center gap-1 bg-white border border-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer hover:bg-slate-100">
-                        <input type="checkbox" value="${p}" class="checkbox-consumidor rounded text-indigo-600 focus:ring-indigo-500" checked>
-                        <span>${p}</span>
+                        <input type="checkbox" value="${nomeSeguro}" class="checkbox-consumidor rounded text-indigo-600 focus:ring-indigo-500" checked>
+                        <span>${nomeSeguro}</span>
                     </label>
                 `;
             });
@@ -558,7 +582,10 @@
 
             if (itemObj.tipo === 'custom') {
                 const checkboxes = document.querySelectorAll('.checkbox-consumidor:checked');
-                checkboxes.forEach(cb => itemObj.consumidores.push(cb.value));
+                checkboxes.forEach(cb => {
+                    const labelSpan = cb.closest('label')?.querySelector('span');
+                    itemObj.consumidores.push(labelSpan ? labelSpan.textContent : cb.value);
+                });
                 if (itemObj.consumidores.length === 0) {
                     return alert('Selecione pelo menos uma pessoa para pagar este item.');
                 }
@@ -587,9 +614,10 @@
             const divPessoas = document.getElementById('listaPessoas');
             divPessoas.innerHTML = '';
             pessoas.forEach((p, index) => {
+                const nomeSeguro = escapeHTML(p);
                 divPessoas.innerHTML += `
                     <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full text-xs font-medium">
-                        ${p}
+                        ${nomeSeguro}
                         <button onclick="removerPessoa(${index})" class="text-indigo-400 hover:text-red-500 ml-1"><i class="fa-solid fa-xmark"></i></button>
                     </span>
                 `;
@@ -604,7 +632,8 @@
             let filtroAtual = selectFiltro.value;
             let filtroHTML = `<option value="todos">Todos os itens</option><option value="geral">Apenas Gerais</option>`;
             pessoas.forEach(p => {
-                filtroHTML += `<option value="${p}">Envolve: ${p}</option>`;
+                const nomeSeguro = escapeHTML(p);
+                filtroHTML += `<option value="${nomeSeguro}">Envolve: ${nomeSeguro}</option>`;
             });
             selectFiltro.innerHTML = filtroHTML;
             if ([...selectFiltro.options].some(opt => opt.value === filtroAtual)) {
@@ -641,13 +670,16 @@
                     if (item.tipo === 'custom') {
                         rateioLabel = item.consumidores.join(', ');
                     }
+                    const nomeItemSeguro = escapeHTML(item.nome);
+                    const rateioSeguro = escapeHTML(rateioLabel);
+                    const itemIdSeguro = Number(item.id);
                     tbody.innerHTML += `
                         <tr class="border-b border-slate-100">
-                            <td class="py-2 text-slate-800">${item.nome}</td>
-                            <td class="py-2 text-slate-600">R$ ${item.valor.toFixed(2)}</td>
-                            <td class="py-2 text-slate-500 text-xs truncate max-w-[150px]"><span class="bg-slate-100 px-2 py-0.5 rounded" title="${rateioLabel}">${rateioLabel}</span></td>
+                            <td class="py-2 text-slate-800">${nomeItemSeguro}</td>
+                            <td class="py-2 text-slate-600">R$ ${Number(item.valor).toFixed(2)}</td>
+                            <td class="py-2 text-slate-500 text-xs truncate max-w-[150px]"><span class="bg-slate-100 px-2 py-0.5 rounded" title="${rateioSeguro}">${rateioSeguro}</span></td>
                             <td class="py-2 text-right">
-                                <button onclick="removerItem(${item.id})" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                                <button onclick="removerItem(${itemIdSeguro})" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash-can text-xs"></i></button>
                             </td>
                         </tr>
                     `;
@@ -720,10 +752,11 @@
                     total: totalPessoa
                 });
 
+                const nomePessoaSeguro = escapeHTML(p);
                 resultadoFinalHTML += `
                     <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
                         <div class="flex justify-between items-center mb-1">
-                            <span class="font-semibold text-slate-800">${p}</span>
+                            <span class="font-semibold text-slate-800">${nomePessoaSeguro}</span>
                             <span class="text-indigo-600 font-bold">R$ ${totalPessoa.toFixed(2)}</span>
                         </div>
                         <div class="text-xs text-slate-500">
