@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🛒 Continha APP</title>
+    <!-- Favicon do site -->
+    <link rel="icon" type="image/png" href="https://cdn.pixabay.com/photo/2020/10/29/09/29/payment-5695697_1280.png">
+    <!-- Biblioteca PapaParse para ler CSV da Planilha -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- Tailwind CSS para estilização rápida e responsiva -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Ícones FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SDK Oficial do Stripe para suporte a Google Pay / Apple Pay -->
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        /* Estilo do Banner Dinâmico no Topo */
+        .ad-banner-slot {
+            width: 100%;
+            max-width: 576px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .ad-banner-slot a {
+            display: block;
+            width: 100%;
+            text-decoration: none;
+        }
+        .ad-banner-slot img {
+            width: 100%;
+            height: 50px;
+            object-fit: cover;
+            display: block;
+            transition: opacity 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- BANNER DE ANÚNCIOS DINÂMICO FIXO NO TOPO -->
+    <div class="sticky top-0 left-0 w-full z-50 bg-slate-200 border-b border-slate-300 py-1 text-center shadow-md">
+        <div id="topo-banner-container" class="ad-banner-slot">
+            <!-- Carregado via script da nova planilha exclusiva -->
+            <a href="#" id="topoAdLink" target="_blank" rel="noopener">
+                <img id="topoAdImg" src="" alt="Publicidade">
+            </a>
+        </div>
+    </div>
+    
+    <!-- Container Principal -->
+    <main class="max-w-xl w-full mx-auto p-4 flex-grow mb-56">
+        
+        <!-- Cabeçalho -->
+        <header class="text-center mb-6">
+            <h1 class="text-2xl font-bold text-slate-900 flex items-center justify-center gap-2">
+                <i class="fa-solid fa-receipt text-indigo-600"></i> Continha APP
+            </h1>
+            <p class="text-sm text-slate-600">Divida a conta do bar ou restaurante sem estresse</p>
+        </header>
+
+        <!-- Seção 1: Participantes -->
+        <section class="bg-white rounded-xl shadow-sm p-4 mb-4 border border-slate-200">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-md font-semibold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-users text-indigo-500"></i> 1. Pessoas na Mesa
+                </h2>
+                <!-- Botão Limpar Tudo -->
+                <button onclick="limparTudo()" class="text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg border border-red-200 transition flex items-center gap-1 cursor-pointer">
+                    <i class="fa-solid fa-rotate-left"></i> Limpar Tudo
+                </button>
+            </div>
+
+            <div class="flex gap-2 mb-3">
+                <input type="text" id="inputNomePessoa" placeholder="Nome da pessoa" class="flex-grow border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                <button onclick="adicionarPessoa()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1">
+                    <i class="fa-solid fa-plus"></i> Adicionar
+                </button>
+            </div>
+            <div id="listaPessoas" class="flex flex-wrap gap-2">
+                <!-- Inserido via JS -->
+            </div>
+        </section>
+
+        <!-- Seção 2: Adicionar Itens -->
+        <section class="bg-white rounded-xl shadow-sm p-4 mb-4 border border-slate-200">
+            <h2 class="text-md font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-utensils text-indigo-500"></i> 2. Consumo / Itens
+            </h2>
+            <div class="space-y-3">
+                <input type="text" id="inputNomeItem" placeholder="Nome do item (ex: Cerveja, Pizza)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-xs text-slate-500 block mb-1">Preço Total (R$)</label>
+                        <input type="text" id="inputValorItem" placeholder="0,00" oninput="mascaraMoedaItem(this)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-500 block mb-1">Tipo de Divisão</label>
+                        <select id="selectTipoDivisao" onchange="alternarTipoDivisao()" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="geral">Dividir para Todos</option>
+                            <option value="custom">Selecionar quem vai pagar</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Seletor de Participantes Específicos para o Item -->
+                <div id="containerSelecaoConsumidores" class="hidden bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <label class="text-xs font-semibold text-slate-700 block mb-2">Quem vai rachar este item?</label>
+                    <div id="checkboxesConsumidores" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                        <!-- Preenchido via JS -->
+                    </div>
+                </div>
+
+                <button onclick="adicionarItem()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-1">
+                    <i class="fa-solid fa-cart-plus"></i> Adicionar Item à Conta
+                </button>
+            </div>
+
+            <!-- Controles de Filtro e Ordenação dos Itens -->
+            <div class="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row gap-2 justify-between items-center text-xs">
+                <div class="w-full sm:w-auto flex items-center gap-1">
+                    <span class="text-slate-500 font-medium"><i class="fa-solid fa-filter"></i> Filtrar:</span>
+                    <select id="filtroConsumidor" onchange="atualizarInterface()" class="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 focus:outline-none">
+                        <option value="todos">Todos os itens</option>
+                        <option value="geral">Apenas Gerais</option>
+                    </select>
+                </div>
+                <div class="w-full sm:w-auto flex items-center gap-1">
+                    <span class="text-slate-500 font-medium"><i class="fa-solid fa-arrow-sort"></i> Ordenar:</span>
+                    <select id="ordenacaoItem" onchange="atualizarInterface()" class="border border-slate-300 rounded px-2 py-1 bg-white text-slate-700 focus:outline-none">
+                        <option value="cadastro">Ordem de Lançamento</option>
+                        <option value="nome">Nome (A-Z)</option>
+                        <option value="valor-desc">Maior Valor</option>
+                        <option value="valor-asc">Menor Valor</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Tabela de Itens Lançados -->
+            <div class="mt-3 overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-slate-200 text-slate-500 text-xs">
+                            <th class="py-2">Item</th>
+                            <th class="py-2">Valor</th>
+                            <th class="py-2">Rateio</th>
+                            <th class="py-2 text-right">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaItens">
+                        <!-- Inserido via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Seção 3: Configurações Adicionais e Cálculo -->
+        <section class="bg-white rounded-xl shadow-sm p-4 mb-4 border border-slate-200">
+            <h2 class="text-md font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-calculator text-indigo-500"></i> 3. Fechamento da Conta
+            </h2>
+            
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-slate-700">Taxa de Serviço (%):</span>
+                    <input type="number" id="inputPercentualTaxa" value="10" min="0" max="100" step="1" onchange="calcularConta()" class="w-16 border border-slate-300 rounded-lg px-2 py-1 text-center text-sm font-semibold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <span id="valorTaxaCalculada" class="text-sm font-medium text-slate-500">R$ 0,00</span>
+            </div>
+            
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center mb-4">
+                <span class="text-sm font-medium text-slate-600">Total Geral da Mesa:</span>
+                <span id="valorTotalGeral" class="text-lg font-bold text-slate-900">R$ 0,00</span>
+            </div>
+
+            <button onclick="calcularConta()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-medium transition flex items-center justify-center gap-2 shadow-sm">
+                <i class="fa-solid fa-file-invoice-dollar"></i> Calcular Rateio Detalhado
+            </button>
+        </section>
+
+        <!-- Seção 4: Modo de Divisão Igualitária Geral -->
+        <section class="bg-white rounded-xl shadow-sm p-4 mb-4 border border-slate-200">
+            <h2 class="text-md font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-users-rectangle text-indigo-500"></i> Alternativa: Dividir Tudo Igualmente
+            </h2>
+            <div class="flex flex-col sm:flex-row gap-2 items-center">
+                <div class="flex-grow w-full">
+                    <label class="text-xs text-slate-500 block mb-1">Número de pessoas para dividir o total geral:</label>
+                    <input type="number" id="inputDivisaoIgualQtd" min="1" value="1" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <button onclick="calcularDivisaoIgualTotal()" class="w-full sm:w-auto mt-auto bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-1">
+                    <i class="fa-solid fa-equals"></i> Calcular Igual
+                </button>
+            </div>
+            <div id="resultadoDivisaoIgual" class="mt-3 hidden bg-slate-50 p-3 rounded-lg border border-slate-200 text-center">
+                <!-- Preenchido via JS -->
+            </div>
+        </section>
+
+        <!-- Seção 5: Resultados do Rateio Detalhado -->
+        <section id="secaoResultado" class="bg-white rounded-xl shadow-sm p-4 border border-slate-200 hidden">
+            <h2 class="text-md font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-wallet text-emerald-600"></i> Resultado por Pessoa (Consumo Real)
+            </h2>
+            
+            <div id="listaResultados" class="space-y-3 mb-4">
+                <!-- Inserido via JS -->
+            </div>
+
+            <button onclick="copiarResumoWhatsApp()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
+                <i class="fa-brands fa-whatsapp text-lg"></i> Copiar Relatório (WhatsApp)
+            </button>
+        </section>
+
+    </main>
+
+    <!-- RODAPÉ FIXO NO BOTTOM -->
+    <footer class="fixed bottom-0 left-0 w-full bg-slate-100 border-t border-slate-300 py-2.5 text-center text-xs text-slate-600 z-40 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        
+        <!-- SEÇÃO DE DOAÇÃO / APOIO -->
+        <div class="max-w-md mx-auto px-3 py-2 bg-white rounded-xl shadow-sm border border-slate-300 mb-1 mx-3 sm:mx-auto">
+            <p class="font-semibold text-slate-800 mb-1.5 flex items-center justify-center gap-1 text-xs">
+                <i class="fa-solid fa-heart text-red-500"></i> Gostou do app? Apoie o projeto!
+            </p>
+            
+            <!-- Opção 1: Pix Personalizado (Digitar Valor) -->
+            <div class="flex items-center gap-2 mb-2">
+                <div class="relative flex-grow">
+                    <input type="text" id="inputValorDoacao" value="Digite um valor..." inputmode="decimal" pattern="[0-9]*" oninput="mascaraMoedaDoacao(this)" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-800 text-center focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <button onclick="gerarECopiarPixDoacao()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition flex items-center justify-center gap-1 cursor-pointer shadow-sm shrink-0 whitespace-nowrap">
+                    <i class="fa-regular fa-copy"></i> Copiar Pix
+                </button>
+            </div>
+            <p id="msgSucessoPix" class="text-[10px] text-emerald-600 font-semibold mb-2 hidden">
+                <i class="fa-solid fa-check-circle"></i> Código Pix Copia e Cola copiado! Abra seu banco para pagar.
+            </p>
+
+            <!-- Divisor sutil -->
+            <div class="border-t border-slate-200 my-1.5 pt-1.5">
+                <p class="text-[10px] text-slate-400 mb-1">Ou escolha um valor via Cartão / Pix (InfinitePay):</p>
+                
+                <!-- Opção 2: Grid de Botões InfinitePay abaixo -->
+                <div class="grid grid-cols-4 gap-1.5 w-full">
+                    <a href="https://link.infinitepay.io/matheusmaia_32/VC1BLUEtSQ-sTlL5IePTQ-10,00" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center justify-center py-1.5 px-1 bg-[#00D632] hover:bg-[#00B82B] text-black font-semibold rounded-lg shadow-sm transition-transform active:scale-95 text-decoration-none">
+                        <span class="text-[9px] uppercase tracking-wider opacity-80 leading-none">Doar</span>
+                        <span class="text-xs font-extrabold mt-0.5">R$ 10</span>
+                    </a>
+                    <a href="https://link.infinitepay.io/matheusmaia_32/VC1DLUMtSQ-xL8lVxgLO0-50,00" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center justify-center py-1.5 px-1 bg-[#00D632] hover:bg-[#00B82B] text-black font-semibold rounded-lg shadow-sm transition-transform active:scale-95 text-decoration-none">
+                        <span class="text-[9px] uppercase tracking-wider opacity-80 leading-none">Doar</span>
+                        <span class="text-xs font-extrabold mt-0.5">R$ 50</span>
+                    </a>
+                    <a href="https://link.infinitepay.io/matheusmaia_32/VC1DLUMtSQ-7uZQXCY1fs-100,00" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center justify-center py-1.5 px-1 bg-[#00D632] hover:bg-[#00B82B] text-black font-semibold rounded-lg shadow-sm transition-transform active:scale-95 text-decoration-none">
+                        <span class="text-[9px] uppercase tracking-wider opacity-80 leading-none">Doar</span>
+                        <span class="text-xs font-extrabold mt-0.5">R$ 100</span>
+                    </a>
+                    <a href="https://link.infinitepay.io/matheusmaia_32/VC1DLUMtSQ-FoXoBv2yil-200,00" target="_blank" rel="noopener noreferrer" class="flex flex-col items-center justify-center py-1.5 px-1 bg-[#00D632] hover:bg-[#00B82B] text-black font-semibold rounded-lg shadow-sm transition-transform active:scale-95 text-decoration-none">
+                        <span class="text-[9px] uppercase tracking-wider opacity-80 leading-none">Doar</span>
+                        <span class="text-xs font-extrabold mt-0.5">R$ 200</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    
+        <p class="text-[10px] text-slate-400 mt-1">Continha APP © 2026 - Todos os direitos reservados</p>
+    </footer>
+
+    <!-- SCRIPT DE CARREGAMENTO DOS ANÚNCIOS DA NOVA PLANILHA EXCLUSIVA -->
+    <script>
+        const SPREADSHEET_ID = '12Nl7154SfNXu2mQKLQ6llh40rv3yIQcMDqCP7o5sMjs';
+        const ANUNCIOS_GID = '0'; 
+        const ADS_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${ANUNCIOS_GID}&t=${Date.now()}`;
+
+        let todosAnuncios = [];
+        let currentIndex = 0;
+
+        function buildAbsoluteURL(rawPath) {
+            if (!rawPath) return '';
+            if (rawPath.startsWith('http://') || rawPath.startsWith('https://')) {
+                return rawPath;
+            }
+            let cleanPath = rawPath.replace(/^["'\/]+|["'\s]+$/g, '');
+            let basePath = window.location.origin + window.location.pathname;
+            if (!basePath.endsWith('/')) {
+                basePath += '/';
+            }
+            return basePath + cleanPath;
+        }
+
+        async function carregarAnunciosTopo() {
+            try {
+                const response = await fetch(ADS_URL, { cache: "no-store" });
+                if (!response.ok) return;
+                const csvText = await response.text();
+                
+                const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+                const data = parsed.data || [];
+
+                todosAnuncios = data.filter(row => {
+                    const img = row.ImagemBanner || row.imagembanner || row.IMAGEMBANNER || '';
+                    return img.trim() !== '';
+                }).map(row => ({
+                    ImagemBanner: (row.ImagemBanner || row.imagembanner || '').trim(),
+                    LinkDestino: (row.LinkDestino || row.linkdestino || '#').trim(),
+                    AltText: (row.AltText || row.alttext || 'Publicidade').trim()
+                }));
+
+                if (todosAnuncios.length > 0) {
+                    exibirAnuncioAtual();
+                    if (todosAnuncios.length > 1) {
+                        setInterval(() => {
+                            currentIndex = (currentIndex + 1) % todosAnuncios.length;
+                            exibirAnuncioAtual();
+                        }, 6000);
+                    }
+                }
+            } catch (e) {
+                console.error("Erro ao carregar banners do topo:", e);
+            }
+        }
+
+        function exibirAnuncioAtual() {
+            const ad = todosAnuncios[currentIndex];
+            const imgEl = document.getElementById('topoAdImg');
+            const linkEl = document.getElementById('topoAdLink');
+
+            if (!ad || !imgEl || !linkEl) return;
+
+            imgEl.style.opacity = '0';
+            setTimeout(() => {
+                linkEl.href = ad.LinkDestino || '#';
+                linkEl.title = ad.AltText || 'Publicidade';
+                imgEl.src = buildAbsoluteURL(ad.ImagemBanner);
+                imgEl.alt = ad.AltText || 'Publicidade';
+                imgEl.style.opacity = '1';
+            }, 150);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            carregarAnunciosTopo();
+        });
+    </script>
+
+    <!-- SCRIPT DE GERAÇÃO DO PIX -->
+    <script>
+        const CHAVE_PIX_RECEPTOR = "matheuzzu@hotmail.com";
+        const NOME_RECEPTOR = "MATHEUS ARRUDA MAIA";
+        const CIDADE_RECEPTOR = "FORTALEZA";
+    
+        function gerarPayloadPix(chave, nome, cidade, valor, txid = "***") {
+            function formatField(id, value) {
+                const len = value.length.toString().padStart(2, '0');
+                return `${id}${len}${value}`;
+            }
+    
+            const gui = formatField('00', 'br.gov.bcb.pix');
+            const key = formatField('01', chave);
+            const merchantAccount = formatField('26', `${gui}${key}`);
+            
+            const categoryCode = formatField('52', '0000');
+            const currency = formatField('53', '986');
+            const amountStr = parseFloat(valor).toFixed(2);
+            const amount = formatField('54', amountStr);
+            const country = formatField('58', 'BR');
+            const name = formatField('59', nome.substring(0, 25));
+            const city = formatField('60', cidade.substring(0, 15));
+            const additionalData = formatField('62', formatField('05', txid));
+    
+            let payload = `000201${merchantAccount}${categoryCode}${currency}${amount}${country}${name}${city}${additionalData}6304`;
+            
+            function crc16(str) {
+                let crc = 0xFFFF;
+                for (let i = 0; i < str.length; i++) {
+                    crc ^= str.charCodeAt(i) << 8;
+                    for (let j = 0; j < 8; j++) {
+                        if ((crc & 0x8000) !== 0) {
+                            crc = (crc << 1) ^ 0x1021;
+                        } else {
+                            crc = crc << 1;
+                        }
+                    }
+                }
+                return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+            }
+    
+            return payload + crc16(payload);
+        }
+    
+        function gerarECopiarPixDoacao() {
+            const inputElement = document.getElementById('inputValorDoacao');
+            let rawDigits = inputElement.value.replace(/\D/g, "");
+            
+            if (!rawDigits || rawDigits === "00") {
+                alert('Por favor, informe um valor de doação válido.');
+                return;
+            }
+    
+            const valor = parseFloat(rawDigits) / 100;
+    
+            if (isNaN(valor) || valor <= 0) {
+                alert('Por favor, informe um valor de doação válido.');
+                return;
+            }
+    
+            const pixPayload = gerarPayloadPix(CHAVE_PIX_RECEPTOR, NOME_RECEPTOR, CIDADE_RECEPTOR, valor);
+    
+            navigator.clipboard.writeText(pixPayload).then(() => {
+                const msg = document.getElementById('msgSucessoPix');
+                if (msg) {
+                    msg.classList.remove('hidden');
+                    setTimeout(() => {
+                        msg.classList.add('hidden');
+                    }, 5000);
+                }
+            }).catch(err => {
+                alert('Não foi possível copiar automaticamente. Tente novamente.');
+            });
+        }
+
+        function mascaraMoedaDoacao(input) {
+            let value = input.value.replace(/\D/g, "");
+            
+            if (!value || value === "00") {
+                input.value = "Digite um valor...";
+                return;
+            }
+            
+            let numberValue = (parseInt(value, 10) / 100).toFixed(2);
+            
+            let formatted = numberValue
+                .replace(".", ",")
+                .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
+        
+            input.value = "R$ " + formatted;
+        }
+    </script>
+
+    <!-- Lógica JavaScript Principal do App -->
+    <script>
+        let pessoas = JSON.parse(localStorage.getItem('rachar_pessoas')) || [];
+        let itens = JSON.parse(localStorage.getItem('rachar_itens')) || [];
+
+        function salvarDados() {
+            localStorage.setItem('rachar_pessoas', JSON.stringify(pessoas));
+            localStorage.setItem('rachar_itens', JSON.stringify(itens));
+        }
+
+        function limparTudo() {
+            if (confirm('Tem certeza de que deseja apagar todas as pessoas e itens para começar uma nova conta do zero?')) {
+                pessoas = [];
+                itens = [];
+                localStorage.removeItem('rachar_pessoas');
+                localStorage.removeItem('rachar_itens');
+
+                document.getElementById('secaoResultado').classList.add('hidden');
+                document.getElementById('resultadoDivisaoIgual').classList.add('hidden');
+                document.getElementById('valorTaxaCalculada').innerText = 'R$ 0,00';
+                document.getElementById('valorTotalGeral').innerText = 'R$ 0,00';
+
+                atualizarInterface();
+            }
+        }
+
+        function adicionarPessoa() {
+            const input = document.getElementById('inputNomePessoa');
+            const nome = input.value.trim();
+            if (!nome) return alert('Digite o nome da pessoa.');
+            if (pessoas.includes(nome)) return alert('Esta pessoa já foi adicionada.');
+
+            pessoas.push(nome);
+            input.value = '';
+            salvarDados();
+            atualizarInterface();
+        }
+
+        function removerPessoa(index) {
+            const nomeRemovido = pessoas[index];
+            pessoas.splice(index, 1);
+            
+            itens.forEach(item => {
+                if (item.tipo === 'custom' && Array.isArray(item.consumidores)) {
+                    item.consumidores = item.consumidores.filter(p => p !== nomeRemovido);
+                    if (item.consumidores.length === 0) item.tipo = 'geral';
+                }
+            });
+
+            salvarDados();
+            atualizarInterface();
+        }
+
+        function alternarTipoDivisao() {
+            const tipo = document.getElementById('selectTipoDivisao').value;
+            const container = document.getElementById('containerSelecaoConsumidores');
+            if (tipo === 'custom') {
+                container.classList.remove('hidden');
+                renderizarCheckboxesConsumidores();
+            } else {
+                container.classList.add('hidden');
+            }
+        }
+
+        function renderizarCheckboxesConsumidores() {
+            const div = document.getElementById('checkboxesConsumidores');
+            div.innerHTML = '';
+            if (pessoas.length === 0) {
+                div.innerHTML = `<span class="text-xs text-slate-400 italic">Cadastre pessoas na mesa primeiro.</span>`;
+                return;
+            }
+            pessoas.forEach(p => {
+                div.innerHTML += `
+                    <label class="inline-flex items-center gap-1 bg-white border border-slate-200 px-2.5 py-1 rounded text-xs cursor-pointer hover:bg-slate-100">
+                        <input type="checkbox" value="${p}" class="checkbox-consumidor rounded text-indigo-600 focus:ring-indigo-500" checked>
+                        <span>${p}</span>
+                    </label>
+                `;
+            });
+        }
+
+        function adicionarItem() {
+            const nomeItem = document.getElementById('inputNomeItem').value.trim();
+            
+            let rawDigits = document.getElementById('inputValorItem').value.replace(/\D/g, "");
+            const valor = parseFloat(rawDigits) / 100;
+
+            if (!nomeItem) return alert('Informe o nome do item.');
+            if (isNaN(valor) || valor <= 0) return alert('Informe um valor válido.');
+
+            let itemObj = {
+                id: Date.now(),
+                nome: nomeItem,
+                valor: valor,
+                tipo: document.getElementById('selectTipoDivisao').value,
+                consumidores: []
+            };
+
+            if (itemObj.tipo === 'custom') {
+                const checkboxes = document.querySelectorAll('.checkbox-consumidor:checked');
+                checkboxes.forEach(cb => itemObj.consumidores.push(cb.value));
+                if (itemObj.consumidores.length === 0) {
+                    return alert('Selecione pelo menos uma pessoa para pagar este item.');
+                }
+            }
+            
+            itens.push(itemObj);
+            
+            document.getElementById('inputNomeItem').value = '';
+            document.getElementById('inputValorItem').value = '';
+            document.getElementById('selectTipoDivisao').value = 'geral';
+            document.getElementById('containerSelecaoConsumidores').classList.add('hidden');
+            
+            salvarDados();
+            atualizarInterface();
+            calcularConta();
+        }
+
+        function removerItem(id) {
+            itens = itens.filter(item => item.id !== id);
+            salvarDados();
+            atualizarInterface();
+            calcularConta();
+        }
+
+        function atualizarInterface() {
+            const divPessoas = document.getElementById('listaPessoas');
+            divPessoas.innerHTML = '';
+            pessoas.forEach((p, index) => {
+                divPessoas.innerHTML += `
+                    <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-1 rounded-full text-xs font-medium">
+                        ${p}
+                        <button onclick="removerPessoa(${index})" class="text-indigo-400 hover:text-red-500 ml-1"><i class="fa-solid fa-xmark"></i></button>
+                    </span>
+                `;
+            });
+
+            const inputQtdIgual = document.getElementById('inputDivisaoIgualQtd');
+            if (inputQtdIgual && pessoas.length > 0 && (inputQtdIgual.value == "1" || parseInt(inputQtdIgual.value) > pessoas.length)) {
+                inputQtdIgual.value = pessoas.length;
+            }
+
+            const selectFiltro = document.getElementById('filtroConsumidor');
+            let filtroAtual = selectFiltro.value;
+            let filtroHTML = `<option value="todos">Todos os itens</option><option value="geral">Apenas Gerais</option>`;
+            pessoas.forEach(p => {
+                filtroHTML += `<option value="${p}">Envolve: ${p}</option>`;
+            });
+            selectFiltro.innerHTML = filtroHTML;
+            if ([...selectFiltro.options].some(opt => opt.value === filtroAtual)) {
+                selectFiltro.value = filtroAtual;
+            }
+
+            let itensFiltrados = [...itens];
+            const filtro = document.getElementById('filtroConsumidor').value;
+            if (filtro !== 'todos' && filtro !== 'geral') {
+                itensFiltrados = itensFiltrados.filter(item => {
+                    if (item.tipo === 'geral') return true;
+                    return item.consumidores && item.consumidores.includes(filtro);
+                });
+            } else if (filtro === 'geral') {
+                itensFiltrados = itensFiltrados.filter(item => item.tipo === 'geral');
+            }
+
+            const ordenacao = document.getElementById('ordenacaoItem').value;
+            if (ordenacao === 'nome') {
+                itensFiltrados.sort((a, b) => a.nome.localeCompare(b.nome));
+            } else if (ordenacao === 'valor-desc') {
+                itensFiltrados.sort((a, b) => b.valor - a.valor);
+            } else if (ordenacao === 'valor-asc') {
+                itensFiltrados.sort((a, b) => a.valor - b.valor);
+            }
+
+            const tbody = document.getElementById('tabelaItens');
+            tbody.innerHTML = '';
+            if (itensFiltrados.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3 text-slate-400 italic">Nenhum item encontrado.</td></tr>`;
+            } else {
+                itensFiltrados.forEach((item) => {
+                    let rateioLabel = 'Geral (Todos)';
+                    if (item.tipo === 'custom') {
+                        rateioLabel = item.consumidores.join(', ');
+                    }
+                    tbody.innerHTML += `
+                        <tr class="border-b border-slate-100">
+                            <td class="py-2 text-slate-800">${item.nome}</td>
+                            <td class="py-2 text-slate-600">R$ ${item.valor.toFixed(2)}</td>
+                            <td class="py-2 text-slate-500 text-xs truncate max-w-[150px]"><span class="bg-slate-100 px-2 py-0.5 rounded" title="${rateioLabel}">${rateioLabel}</span></td>
+                            <td class="py-2 text-right">
+                                <button onclick="removerItem(${item.id})" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+        }
+
+        function calcularConta() {
+            if (pessoas.length === 0) {
+                document.getElementById('secaoResultado').classList.add('hidden');
+                return;
+            }
+
+            let somaBruta = itens.reduce((acc, item) => acc + item.valor, 0);
+            
+            let percentualTaxa = parseFloat(document.getElementById('inputPercentualTaxa').value);
+            if (isNaN(percentualTaxa) || percentualTaxa < 0) percentualTaxa = 0;
+            
+            let taxaServicoTotal = somaBruta * (percentualTaxa / 100);
+            let somaTotalGeral = somaBruta + taxaServicoTotal;
+
+            document.getElementById('valorTaxaCalculada').innerText = `R$ ${taxaServicoTotal.toFixed(2)}`;
+            document.getElementById('valorTotalGeral').innerText = `R$ ${somaTotalGeral.toFixed(2)}`;
+
+            let consumoBrutoPorPessoa = {};
+            let itensDetalhadosPorPessoa = {};
+            pessoas.forEach(p => {
+                consumoBrutoPorPessoa[p] = 0;
+                itensDetalhadosPorPessoa[p] = [];
+            });
+
+            itens.forEach(item => {
+                if (item.tipo === 'geral') {
+                    let valorUnitario = pessoas.length > 0 ? item.valor / pessoas.length : 0;
+                    pessoas.forEach(p => {
+                        consumoBrutoPorPessoa[p] += valorUnitario;
+                        itensDetalhadosPorPessoa[p].push({ nome: `${item.nome} (Geral)`, valor: valorUnitario });
+                    });
+                } else if (item.tipo === 'custom') {
+                    let numParticipantesItem = item.consumidores.length;
+                    let valorUnitario = numParticipantesItem > 0 ? item.valor / numParticipantesItem : 0;
+                    item.consumidores.forEach(p => {
+                        if (consumoBrutoPorPessoa.hasOwnProperty(p)) {
+                            consumoBrutoPorPessoa[p] += valorUnitario;
+                            itensDetalhadosPorPessoa[p].push({ nome: `${item.nome} (Rateio ${numParticipantesItem}p)`, valor: valorUnitario });
+                        }
+                    });
+                }
+            });
+
+            let resultadoFinalHTML = '';
+            window.dadosRelatorioBobina = {
+                pessoas: [],
+                somaBruta: somaBruta,
+                taxaServico: taxaServicoTotal,
+                percentualTaxa: percentualTaxa,
+                somaTotal: somaTotalGeral
+            };
+
+            pessoas.forEach(p => {
+                let brutoPessoa = consumoBrutoPorPessoa[p];
+                let taxaPessoa = brutoPessoa * (percentualTaxa / 100);
+                let totalPessoa = brutoPessoa + taxaPessoa;
+
+                window.dadosRelatorioBobina.pessoas.push({
+                    nome: p,
+                    itens: itensDetalhadosPorPessoa[p],
+                    consumoBruto: brutoPessoa,
+                    taxa: taxaPessoa,
+                    total: totalPessoa
+                });
+
+                resultadoFinalHTML += `
+                    <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-semibold text-slate-800">${p}</span>
+                            <span class="text-indigo-600 font-bold">R$ ${totalPessoa.toFixed(2)}</span>
+                        </div>
+                        <div class="text-xs text-slate-500">
+                            Consumo: R$ ${brutoPessoa.toFixed(2)} | Taxa (${percentualTaxa}%): R$ ${taxaPessoa.toFixed(2)}
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('listaResultados').innerHTML = resultadoFinalHTML;
+            document.getElementById('secaoResultado').classList.remove('hidden');
+        }
+
+        function calcularDivisaoIgualTotal() {
+            if (itens.length === 0) return alert('Adicione itens na conta primeiro.');
+            let qtdPessoas = parseInt(document.getElementById('inputDivisaoIgualQtd').value);
+            if (isNaN(qtdPessoas) || qtdPessoas <= 0) return alert('Informe um número válido de pessoas.');
+
+            let somaBruta = itens.reduce((acc, item) => acc + item.valor, 0);
+            let percentualTaxa = parseFloat(document.getElementById('inputPercentualTaxa').value);
+            if (isNaN(percentualTaxa)) percentualTaxa = 0;
+
+            let taxaServicoTotal = somaBruta * (percentualTaxa / 100);
+            let somaTotalGeral = somaBruta + taxaServicoTotal;
+            let valorPorPessoa = somaTotalGeral / qtdPessoas;
+
+            const divResultado = document.getElementById('resultadoDivisaoIgual');
+            divResultado.classList.remove('hidden');
+            divResultado.innerHTML = `
+                <div class="text-sm font-medium text-slate-700">Dividindo <b>R$ ${somaTotalGeral.toFixed(2)}</b> (com taxa) por <b>${qtdPessoas} pessoas</b>:</div>
+                <div class="text-xl font-bold text-indigo-600 mt-1">R$ ${valorPorPessoa.toFixed(2)} para cada</div>
+            `;
+        }
+
+        function copiarResumoWhatsApp() {
+            if (!window.dadosRelatorioBobina || window.dadosRelatorioBobina.pessoas.length === 0) return;
+
+            let d = window.dadosRelatorioBobina;
+            let texto = "============================\n";
+            texto += "    🧾 CONTINHA 🧾   \n";
+            texto += "============================\n\n";
+
+            d.pessoas.forEach(p => {
+                texto += `👤 *${p.nome.toUpperCase()}*\n`;
+                texto += `----------------------------\n`;
+                
+                if (p.itens.length > 0) {
+                    p.itens.forEach(item => {
+                        texto += `• ${item.nome.padEnd(18, '.')} R$ ${item.valor.toFixed(2).padStart(6)}\n`;
+                    });
+                } else {
+                    texto += `• (Nenhum consumo registrado)\n`;
+                }
+
+                if (p.taxa > 0) {
+                    texto += `• [Taxa ${d.percentualTaxa}% s/ consumo]... R$ ${p.taxa.toFixed(2).padStart(6)}\n`;
+                }
+
+                texto += `----------------------------\n`;
+                texto += `*TOTAL ${p.nome.toUpperCase()}: R$ ${p.total.toFixed(2)}*\n\n`;
+            });
+
+            texto += "============================\n";
+            texto += ` CONSUMO BRUTO: R$ ${d.somaBruta.toFixed(2)}\n`;
+            texto += ` TAXA (${d.percentualTaxa}%): R$ ${d.taxaServico.toFixed(2)}\n`;
+            texto += ` *TOTAL GERAL: R$ ${d.somaTotal.toFixed(2)}*\n`;
+            texto += "============================\n";
+            texto += "_Gerado via Continha APP_\n";
+            texto += "https://pivetzen.github.io/continha/";
+
+            navigator.clipboard.writeText(texto).then(() => {
+                alert('Relatório copiado com sucesso! Cole no WhatsApp.');
+            }).catch(err => {
+                alert('Erro ao copiar relatório.');
+            });
+        }
+
+        function mascaraMoedaItem(input) {
+            let value = input.value.replace(/\D/g, "");
+            
+            if (!value || value === "00") {
+                input.value = "R$ 0,00";
+                return;
+            }
+            
+            let numberValue = (parseInt(value, 10) / 100).toFixed(2);
+            
+            let formatted = numberValue
+                .replace(".", ",")
+                .replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.");
+        
+            input.value = "R$ " + formatted;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            atualizarInterface();
+            if (pessoas.length > 0 && itens.length > 0) {
+                calcularConta();
+            }
+        });
+    </script>
+</body>
+</html>
